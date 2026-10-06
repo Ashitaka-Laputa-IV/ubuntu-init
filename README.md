@@ -147,6 +147,8 @@ git clone --depth=1 https://github.com/iDvel/rime-ice.git \
 - `uv` 装完要把 `~/.local/bin` 加进 PATH，**重开终端**才生效。
 - GitHub 的 release 信息会缓存到 `~/.cache/ubuntuinit/releases`（默认 6 小时）；遇限流先换代理出口重试、再用缓存，仍不行就**跳过该 App 继续**，不中断整体。设 `GITHUB_TOKEN` 可提高限额。
 - `chrome`/`edge` 通过官方 `.deb` 安装，其自带脚本会写入 Google/微软的 apt 源，之后可随 `apt upgrade` 一起更新。`dl.google.com` 在国内常不通，脚本会按源探测自动走代理。
+- `wechat` 用腾讯官方 Linux 原生版（arm64 把 URL 换成 `WeChatLinux_arm64.deb`）；仓库/snap 里那个 `wechat` 是过时的网页包裹版，别用。若某个官方域名证书报错，换用 `dldir1.qq.com` 这个域名。
+- `deb` 类首次安装后会记录真实包名，之后能正确"已装跳过"，不会重复下载上百 MB。
 
 ## 参考
 

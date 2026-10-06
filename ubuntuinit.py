@@ -108,6 +108,11 @@ def _tail(text: str, lines: int = 12) -> str:
     return "\n".join(rows[-lines:])
 
 
+def _err(e: Exception) -> str:
+    reason = getattr(e, "reason", None)
+    return str(reason) if reason else str(e)
+
+
 # --------------------------------------------------------------------------- #
 # 网络：按源探测速度 / 决定是否走代理
 # --------------------------------------------------------------------------- #
@@ -356,6 +361,21 @@ def http_download(url: str, dest: str, desc: str, proxy: str | None = None) -> N
                 progress.update(task, advance=len(chunk))
 
 
+def fetch_to(url: str, dest: str, desc: str, proxy: str | None = None) -> None:
+    """下载到文件；直连失败（含 SSL 证书问题）时自动改走代理，仍失败则跳过该 App。"""
+    try:
+        http_download(url, dest, desc, proxy=proxy)
+        return
+    except (urllib.error.URLError, OSError) as e:
+        if proxy or _PROXY_DISABLED or not _reachable(_proxy_url()):
+            raise SkipApp(f"{desc}失败：{_err(e)}")
+        info(f"直连失败（{_err(e)}），改走代理重试")
+    try:
+        http_download(url, dest, desc, proxy=_proxy_url())
+    except (urllib.error.URLError, OSError) as e:
+        raise SkipApp(f"{desc}失败：{_err(e)}")
+
+
 def run(cmd: list[str], dry: bool, label: str, proxy: str | None = None) -> None:
     """执行命令。有 rich 时用状态圈包住并隐藏输出，失败才回显。"""
     if dry:
@@ -407,12 +427,14 @@ def is_installed(source: str, name: str, arg: str) -> bool:
         token = normalize_tag(github_latest(arg).get("tag_name", ""))
         return bool(token) and any(token in v for v in dpkg_versions())
     if source == "deb":
-        try:
-            url = resolve_deb_url(arg)
-        except SystemExit:
-            return False
-        pkg = os.path.basename(urllib.parse.urlparse(url).path).split("_")[0]
-        return _ok(["dpkg", "-s", pkg])
+        pkg = _deb_pkg_from_name(name)          # 优先用首次安装记录的真实包名
+        if not pkg:
+            try:
+                url = resolve_deb_url(arg)
+            except (SystemExit, SkipApp):
+                return False
+            pkg = os.path.basename(urllib.parse.urlparse(url).path).split("_")[0]
+        return bool(pkg) and _ok(["dpkg", "-s", pkg])
     if source == "script":
         return os.path.exists(os.path.join(STATE_DIR, name))
     return False
@@ -421,6 +443,24 @@ def is_installed(source: str, name: str, arg: str) -> bool:
 def mark_installed(name: str) -> None:
     os.makedirs(STATE_DIR, exist_ok=True)
     open(os.path.join(STATE_DIR, name), "w").close()
+
+
+def _deb_pkg_from_name(name: str) -> str | None:
+    """读取首次安装时记录的 .deb 真实包名。"""
+    try:
+        with open(os.path.join(STATE_DIR, "deb", name), encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def _record_deb_pkg(name: str, pkg: str) -> None:
+    try:
+        os.makedirs(os.path.join(STATE_DIR, "deb"), exist_ok=True)
+        with open(os.path.join(STATE_DIR, "deb", name), "w", encoding="utf-8") as f:
+            f.write(pkg)
+    except OSError:
+        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -451,7 +491,7 @@ def do_script(name: str, arg: str, dry: bool) -> None:
     fd, path = tempfile.mkstemp(suffix=".sh", prefix="ubuntuinit-")
     os.close(fd)
     try:
-        http_download(arg, path, f"下载 {name} 脚本", proxy=proxy)
+        fetch_to(arg, path, f"下载 {name} 脚本", proxy=proxy)
         run(["bash", path], False, f"安装 {name}", proxy=proxy)
     finally:
         os.remove(path)
@@ -476,7 +516,7 @@ def do_github(name: str, arg: str, dry: bool) -> None:
     fd, path = tempfile.mkstemp(suffix=".deb", prefix="ubuntuinit-")
     os.close(fd)
     try:
-        http_download(url, path, f"下载 {name} {tag}", proxy=proxy)
+        fetch_to(url, path, f"下载 {name} {tag}", proxy=proxy)
         # 本地 .deb 安装，依赖走镜像，不用代理
         run(["sudo", "apt", "install", "-y", path], False, f"安装 {name}")
     finally:
@@ -493,8 +533,12 @@ def do_deb(name: str, arg: str, dry: bool) -> None:
     fd, path = tempfile.mkstemp(suffix=".deb", prefix="ubuntuinit-")
     os.close(fd)
     try:
-        http_download(url, path, f"下载 {name}", proxy=proxy)
+        fetch_to(url, path, f"下载 {name}", proxy=proxy)
         run(["sudo", "apt", "install", "-y", path], False, f"安装 {name}")
+        pkg = subprocess.run(["dpkg-deb", "-f", path, "Package"],
+                             capture_output=True, text=True).stdout.strip()
+        if pkg:
+            _record_deb_pkg(name, pkg)          # 记下真实包名，下次直接跳过
     finally:
         os.remove(path)
 
@@ -595,7 +639,10 @@ def main() -> None:
     ensure_sudo(args.dry_run or not need_sudo)
 
     for name in names:
-        install_one(name, registry[name], args.dry_run, args.force)
+        try:
+            install_one(name, registry[name], args.dry_run, args.force)
+        except Exception as e:                  # 单个 App 出错不影响其它
+            warn(f"{name} 出错，已跳过：{type(e).__name__}: {e}")
 
     say("[green]全部完成。[/]" if console else "全部完成。")
 
