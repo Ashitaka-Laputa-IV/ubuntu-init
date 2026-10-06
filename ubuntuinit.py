@@ -62,6 +62,7 @@ PROBE_BYTES = 800_000
 PROBE_MAX_SECONDS = 5.0
 
 SUDO_SOURCES = {"apt", "apt-i386", "snap", "github", "deb"}    # 这些来源需要 root
+APT_SOURCES = {"apt", "apt-i386", "github", "deb"}             # 这些会用到 apt/dpkg
 CACHE_DIR = os.path.expanduser("~/.cache/ubuntuinit/releases")
 CACHE_TTL = float(os.environ.get("UBUNTUINIT_CACHE_TTL", "21600"))  # 秒
 
@@ -211,6 +212,13 @@ def _ok(cmd: list[str]) -> bool:
         return subprocess.run(cmd, capture_output=True).returncode == 0
     except OSError:
         return False
+
+
+def _pkg_installed(pkg: str) -> bool:
+    """仅当状态真的是 'install ok installed' 才算已安装（半装/已解包不算）。"""
+    r = subprocess.run(["dpkg-query", "-W", "-f=${Status}", pkg],
+                       capture_output=True, text=True)
+    return r.returncode == 0 and r.stdout.strip() == "install ok installed"
 
 
 def dpkg_versions() -> list[str]:
@@ -411,12 +419,23 @@ def ensure_sudo(skip: bool) -> None:
         fail("sudo 认证失败")
 
 
+def repair_dpkg(dry: bool) -> None:
+    """上次安装被中断会留下半装的包，先用 dpkg --configure -a 修好。"""
+    if dry:
+        return
+    r = subprocess.run(["sudo", "dpkg", "--audit"], capture_output=True, text=True)
+    if not r.stdout.strip():
+        return
+    warn("检测到 dpkg 状态异常（上次安装可能被中断），先自动修复…")
+    run(["sudo", "dpkg", "--configure", "-a"], False, "修复 dpkg")
+
+
 # --------------------------------------------------------------------------- #
 # "是否已安装" 判断
 # --------------------------------------------------------------------------- #
 def is_installed(source: str, name: str, arg: str) -> bool:
     if source in ("apt", "apt-i386"):
-        return all(_ok(["dpkg", "-s", p]) for p in shlex.split(arg))
+        return all(_pkg_installed(p) for p in shlex.split(arg))
     if source == "snap":
         return _ok(["snap", "list", shlex.split(arg)[0]])
     if source == "npm":
@@ -434,7 +453,7 @@ def is_installed(source: str, name: str, arg: str) -> bool:
             except (SystemExit, SkipApp):
                 return False
             pkg = os.path.basename(urllib.parse.urlparse(url).path).split("_")[0]
-        return bool(pkg) and _ok(["dpkg", "-s", pkg])
+        return bool(pkg) and _pkg_installed(pkg)
     if source == "script":
         return os.path.exists(os.path.join(STATE_DIR, name))
     return False
@@ -654,6 +673,8 @@ def main() -> None:
 
     need_sudo = any(parse_entry(n, registry[n])[0] in SUDO_SOURCES for n in names)
     ensure_sudo(args.dry_run or not need_sudo)
+    if any(parse_entry(n, registry[n])[0] in APT_SOURCES for n in names):
+        repair_dpkg(args.dry_run)
 
     for name in names:
         try:
