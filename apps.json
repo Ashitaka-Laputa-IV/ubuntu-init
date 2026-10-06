@@ -27,5 +27,6 @@
   "fonts-cjk":      "apt:fonts-noto-cjk",
   "chrome":         "deb:https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
   "edge":           "deb:https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-stable/",
-  "wechat":         "deb:https://dldir1.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb"
+  "wechat":         "deb:https://dldir1.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb",
+  "steam":          "apt-i386:steam-installer"
 }

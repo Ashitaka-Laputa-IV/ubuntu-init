@@ -61,7 +61,7 @@ SLOW_MBPS = float(os.environ.get("UBUNTUINIT_SLOW_MBPS", "1.0"))
 PROBE_BYTES = 800_000
 PROBE_MAX_SECONDS = 5.0
 
-SUDO_SOURCES = {"apt", "snap", "github", "deb"}    # 这些来源需要 root
+SUDO_SOURCES = {"apt", "apt-i386", "snap", "github", "deb"}    # 这些来源需要 root
 CACHE_DIR = os.path.expanduser("~/.cache/ubuntuinit/releases")
 CACHE_TTL = float(os.environ.get("UBUNTUINIT_CACHE_TTL", "21600"))  # 秒
 
@@ -415,7 +415,7 @@ def ensure_sudo(skip: bool) -> None:
 # "是否已安装" 判断
 # --------------------------------------------------------------------------- #
 def is_installed(source: str, name: str, arg: str) -> bool:
-    if source == "apt":
+    if source in ("apt", "apt-i386"):
         return all(_ok(["dpkg", "-s", p]) for p in shlex.split(arg))
     if source == "snap":
         return _ok(["snap", "list", shlex.split(arg)[0]])
@@ -468,6 +468,22 @@ def _record_deb_pkg(name: str, pkg: str) -> None:
 # --------------------------------------------------------------------------- #
 def do_apt(name: str, arg: str, dry: bool) -> None:
     # 走系统镜像，永不代理
+    run(["sudo", "apt", "install", "-y", *shlex.split(arg)], dry, f"安装 {name}")
+
+
+def ensure_i386(dry: bool) -> None:
+    """为 32 位软件（如 Steam/Wine）启用 i386 架构。"""
+    out = subprocess.run(["dpkg", "--print-foreign-architectures"],
+                         capture_output=True, text=True).stdout
+    if "i386" in out.split():
+        return
+    info("启用 i386 架构（32 位软件需要）")
+    run(["sudo", "dpkg", "--add-architecture", "i386"], dry, "启用 i386")
+    run(["sudo", "apt", "update"], dry, "更新软件源")
+
+
+def do_apt_i386(name: str, arg: str, dry: bool) -> None:
+    ensure_i386(dry)
     run(["sudo", "apt", "install", "-y", *shlex.split(arg)], dry, f"安装 {name}")
 
 
@@ -545,6 +561,7 @@ def do_deb(name: str, arg: str, dry: bool) -> None:
 
 BACKENDS = {
     "apt": do_apt,
+    "apt-i386": do_apt_i386,
     "snap": do_snap,
     "npm": do_npm,
     "script": do_script,

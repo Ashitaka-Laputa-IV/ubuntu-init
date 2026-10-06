@@ -70,7 +70,11 @@ UBUNTUINIT_SLOW_MBPS=2 ./ubuntuinit.py all           # 阈值改成 2 MB/s（默
   "fcitx5":         "apt:fcitx5 fcitx5-frontend-gtk3 fcitx5-frontend-gtk4 fcitx5-frontend-qt5 fcitx5-frontend-qt6",
   "rime":           "apt:fcitx5-rime",
   "fcitx5-config":  "apt:fcitx5-config-qt",
-  "fonts-cjk":      "apt:fonts-noto-cjk"
+  "fonts-cjk":      "apt:fonts-noto-cjk",
+  "chrome":         "deb:https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
+  "edge":           "deb:https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-stable/",
+  "wechat":         "deb:https://dldir1.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb",
+  "steam":          "apt-i386:steam-installer"
 }
 ```
 
@@ -86,6 +90,7 @@ UBUNTUINIT_SLOW_MBPS=2 ./ubuntuinit.py all           # 阈值改成 2 MB/s（默
 | `script` | 跑官方安装脚本 | `script:https://astral.sh/uv/install.sh` |
 | `npm` | `npm install -g` | `npm:pnpm` |
 | `deb` | 直接下载 `.deb` 安装；给目录 URL 则自动取最新版 | `deb:https://.../chrome.deb` |
+| `apt-i386` | 先启用 i386 架构再 `apt install`（32 位软件） | `apt-i386:steam-installer` |
 
 其中 `github` 会：调 API 取最新版 → 按架构（amd64 / arm64 / armhf）挑 `.deb` → 下载到临时文件 → `sudo apt install -y` 安装 → 删临时文件。用的是 `apt install ./x.deb` 而不是 `dpkg -i`，依赖会自动补齐。
 
@@ -149,6 +154,7 @@ git clone --depth=1 https://github.com/iDvel/rime-ice.git \
 - `chrome`/`edge` 通过官方 `.deb` 安装，其自带脚本会写入 Google/微软的 apt 源，之后可随 `apt upgrade` 一起更新。`dl.google.com` 在国内常不通，脚本会按源探测自动走代理。
 - `wechat` 用腾讯官方 Linux 原生版（arm64 把 URL 换成 `WeChatLinux_arm64.deb`）；仓库/snap 里那个 `wechat` 是过时的网页包裹版，别用。若某个官方域名证书报错，换用 `dldir1.qq.com` 这个域名。
 - `deb` 类首次安装后会记录真实包名，之后能正确"已装跳过"，不会重复下载上百 MB。
+- `steam` 是 32 位应用，清单里用 `apt-i386:` 来源，脚本会**自动启用 i386 架构并 `apt update`** 后再装（会一并装上 `steam-devices` 手柄规则）。想用免准备的沙箱版可改成 `snap:steam`。
 
 ## 参考
 
