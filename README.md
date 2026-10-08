@@ -74,7 +74,8 @@ UBUNTUINIT_SLOW_MBPS=2 ./ubuntuinit.py all           # 阈值改成 2 MB/s（默
   "chrome":         "deb:https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
   "edge":           "deb:https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-stable/",
   "wechat":         "deb:https://dldir1.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb",
-  "steam":          "apt-i386:steam-installer"
+  "steam":          "apt-i386:steam-installer",
+  "flameshot":      "apt:flameshot"
 }
 ```
 
@@ -134,12 +135,33 @@ EOF
 git clone --depth=1 https://github.com/iDvel/rime-ice.git \
   ~/.local/share/fcitx5/rime
 
-# 4) 注销重登（或重启），在 fcitx5-config-qt 里把「Rime」加进输入法列表
+# 4) 开机自启（否则开机后输入法不可用，需手动点一下 fcitx5）
+mkdir -p ~/.config/autostart
+cp /usr/share/applications/org.fcitx.Fcitx5.desktop ~/.config/autostart/
+echo 'X-GNOME-Autostart-enabled=true' >> ~/.config/autostart/org.fcitx.Fcitx5.desktop
+
+# 5) 注销重登（或重启），在 fcitx5-config-qt 里把「Rime」加进输入法列表
 ```
 
 之后 `Ctrl+空格` 切换中英；Rime 里按 `Ctrl + 反引号` 打开方案选单。
 
 > rime 用户目录常见为 `~/.local/share/fcitx5/rime`，部分版本是 `~/.config/fcitx5/rime`，方案没生效就换另一个。参考：[iDvel/rime-ice](https://github.com/iDvel/rime-ice)
+
+### GNOME Wayland 专属：Kimpanel 扩展
+
+fcitx5 在 Wayland 下会弹「Wayland 诊断」，提示装 [Kimpanel](https://extensions.gnome.org/extension/261/kimpanel/)（在 GNOME Shell 顶栏/活动界面显示输入法面板）：
+
+```bash
+# 从 extensions.gnome.org 下载（version_tag 以官网为准；GNOME 50 用 v92）
+curl -fL -o /tmp/kimpanel.zip \
+  "https://extensions.gnome.org/download-extension/kimpanel@kde.org.shell-extension.zip?version_tag=75158"
+gnome-extensions install --force /tmp/kimpanel.zip
+```
+
+装完**注销重登**，在「扩展 / Extensions」应用里启用 **Input Method Panel (kimpanel)**。
+（v92 支持 GNOME Shell 48–51。轻量场景不装也能用，只是顶栏/活动界面可能看不到候选窗。）
+
+> **常见问题**：开机后输入法用不了、点一下 fcitx5 才能用 → 基本都是**没有自启**，按上面第 4 步补上即可。
 
 ## 注意
 
@@ -153,6 +175,7 @@ git clone --depth=1 https://github.com/iDvel/rime-ice.git \
 - GitHub 的 release 信息会缓存到 `~/.cache/ubuntuinit/releases`（默认 6 小时）；遇限流先换代理出口重试、再用缓存，仍不行就**跳过该 App 继续**，不中断整体。设 `GITHUB_TOKEN` 可提高限额。
 - `chrome`/`edge` 通过官方 `.deb` 安装，其自带脚本会写入 Google/微软的 apt 源，之后可随 `apt upgrade` 一起更新。`dl.google.com` 在国内常不通，脚本会按源探测自动走代理。
 - `wechat` 用腾讯官方 Linux 原生版（arm64 把 URL 换成 `WeChatLinux_arm64.deb`）；仓库/snap 里那个 `wechat` 是过时的网页包裹版，别用。若某个官方域名证书报错，换用 `dldir1.qq.com` 这个域名。
+- Wayland 下 **GNOME Shell 不能热重载**：装 GNOME 扩展（如 Kimpanel）、改自启项后，都要**注销重登**才生效。
 - `deb` 类首次安装后会记录真实包名，之后能正确"已装跳过"，不会重复下载上百 MB。
 - `steam` 是 32 位应用，清单里用 `apt-i386:` 来源，脚本会**自动启用 i386 架构并 `apt update`** 后再装（会一并装上 `steam-devices` 手柄规则）。想用免准备的沙箱版可改成 `snap:steam`。
 
